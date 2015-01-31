@@ -1,0 +1,2 @@
+message1 = "asd";
+message = "asdsadasd";
