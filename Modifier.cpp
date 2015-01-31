@@ -10,10 +10,14 @@
 #include <windows.h>
 #include <sstream>
 #include <algorithm>
+#include "src_gumbo\gumbo.h"
 
 using namespace std;
 
-const string kPlayerFile = "test.txt";//"ismplayer.html";
+const string kPlayerFile = "ismplayer.html";
+const string kTypePresentation = "presentation";
+const string kTypeQuiz = "quiz";
+const string kTypeInteraction = "interaction";
 const string kConfigFile = "Modifier.cfg";
 
 typedef map<string, string> templateParams;
@@ -23,7 +27,7 @@ bool FileExists(const string& fname)
 	return ifstream(fname).is_open();
 }
 
-string ExpandTemplate(string& sourceStr, templateParams& tmplParams)
+string ExpandTemplate(const string& sourceStr, templateParams& tmplParams)
 {
 	string resultString, tmpStr;
 	bool substrExit = false;
@@ -220,51 +224,119 @@ string GetWord(string line, size_t pos)
 	return tempKey;
 }
 
-templateParams ReplaceKeys(const string& filePath,templateParams& configMap)
-{
-	ifstream inFile(filePath);
-	if (!inFile)
-	{
-		throw exception("Can't open file.");
+GumboNode *
+gumbo_get_element_by_id(const char *id, GumboNode *document) {
+
+	if (GUMBO_NODE_DOCUMENT != document->type
+		&& GUMBO_NODE_ELEMENT != document->type) {
+		return NULL;
 	}
 
+	GumboAttribute *node_id =
+		gumbo_get_attribute(&document->v.element.attributes, "id");
+	if (node_id && 0 == strcmp(id, node_id->value)) {
+		return document;
+	}
+
+	// iterate all children
+	GumboVector *children = &document->v.element.children;
+	for (unsigned int i = 0; i < children->length; i++) {
+		GumboNode *node = gumbo_get_element_by_id(id, (GumboNode *)children->data[i]);
+		if (node) return node;
+	}
+
+	return NULL;
+}
+
+string FindValueFromSrcFile(const string &sourceFile, string findKey)
+{
+	size_t indexOfPos = sourceFile.find(findKey);
+	if (indexOfPos != string::npos)
+	{
+		string strKey = GetWord(sourceFile, indexOfPos);
+
+		if (strKey == findKey)
+		{
+			size_t quoteOpen = sourceFile.find("\"", indexOfPos);
+			if (quoteOpen != string::npos)
+			{
+				size_t quoteClose = sourceFile.find("\"", quoteOpen + 1);
+				if (quoteClose != string::npos)
+				{
+					return sourceFile.substr(quoteOpen + 1, quoteClose - quoteOpen - 1);
+				}
+			}
+		}
+	}
+
+	return "";
+}
+
+templateParams ReplaceKeys(const string& srcFile,templateParams& configMap)
+{
 	string valueStr, keyStr;
 	bool isNowValue = false;
 	bool canReedValue = false;
 
 	templateParams newParams;
-	while (!inFile.eof())
+
+	GumboOutput *output = gumbo_parse(srcFile.c_str());
+	GumboNode *element = NULL;
+
+	for each(auto& pair in configMap)
 	{
-		string line;
-		getline(inFile, line);
-
-		for each(auto& pair in configMap)
+		string keyStr;
+		element = gumbo_get_element_by_id(pair.first.c_str(), output->root);
+		if (!element)
 		{
-			size_t indexOfPos = line.find(pair.first);
-			if (indexOfPos != string::npos)
+			keyStr = FindValueFromSrcFile(srcFile, pair.first);
+			if (keyStr.empty())
+				continue;
+		}
+		else
+		{
+			GumboNode* title_text = static_cast<GumboNode*>(element->v.element.children.data[0]);
+			if (title_text->type == GUMBO_NODE_TEXT)
 			{
-				string strKey = GetWord(line, indexOfPos);
-
-				if (strKey == pair.first)
-				{
-					size_t quoteOpen = line.find("\"");
-					if (quoteOpen != string::npos)
-					{
-						size_t quoteClose = line.find("\"", quoteOpen + 1);
-						if (quoteClose != string::npos)
-						{
-							string tempKey = line.substr(quoteOpen + 1, quoteClose - quoteOpen - 1);
-							string value = pair.second;
-
-							newParams.insert(std::pair<string,string>(tempKey, value));
-						}
-					}
-				}
+				keyStr = title_text->v.text.text;
 			}
 		}
-	};
+
+		newParams.insert(std::pair<string, string>(keyStr, pair.second));
+	}
 
 	return newParams;
+}
+
+void ReplaceContentType(templateParams& config)
+{
+	auto copyConfig = config;
+	for each(auto& pair in copyConfig)
+	{
+		string type;
+		templateParams tempMap;
+		if (pair.first.find(kTypePresentation) != string::npos)
+		{
+			type = kTypePresentation;
+		}
+		else if (pair.first.find(kTypeQuiz) != string::npos)
+		{
+			type = kTypeQuiz;
+		}
+		else if (pair.first.find(kTypeInteraction) != string::npos)
+		{
+			type = kTypeInteraction;
+		}
+
+		if (!type.empty())
+		{
+			tempMap.insert(std::pair<string, string>("{%CONTENT%}", type));
+			string key = pair.first;
+			string value = pair.second;
+			config.erase(pair.first);
+			config.insert(std::pair<string, string>(key, ExpandTemplate(value, tempMap)));
+		}
+	}
 }
 
 void Modifi(const TCHAR *inputFolder)
@@ -272,22 +344,33 @@ void Modifi(const TCHAR *inputFolder)
 	templateParams config = ReadConfigFile();
 	string filePath = FindFileFromDir(inputFolder);
 
-	config = ReplaceKeys(filePath, config);
-
 	ifstream inFile(filePath, ifstream::binary);
 	if (!inFile)
 	{
-		throw exception("Can't open file.");
+		throw exception("Can't open input file.");
 	}
 
-	string sourceFile;
-	char ch;
-	while (inFile.get(ch))
+	inFile.seekg(0, std::ios::end);
+	size_t size = (size_t)inFile.tellg();
+
+	string strFileBuf(size, ' ');
+
+	inFile.seekg(0);
+	inFile.read(&strFileBuf[0], size);
+
+	inFile.close();
+
+	config = ReplaceKeys(strFileBuf, config);
+
+	ReplaceContentType(config);
+
+	ofstream outFile(filePath, ifstream::binary);
+	if (!outFile)
 	{
-		sourceFile += ch;
+		throw exception("Can't open output file.");
 	}
 
-	string df = ExpandTemplate(sourceFile, config);
+	outFile << ExpandTemplate(strFileBuf, config);
 }
 
 int _tmain(int argc, _TCHAR* argv[])
