@@ -143,7 +143,7 @@ templateParams ReadConfigFile()
 	ifstream inFile(kConfigFile);
 	if (!inFile)
 	{
-		throw exception("Can't open file.");
+		throw exception("Can't open file of configuration.");
 	}
 
 	string valueStr, keyStr;
@@ -384,6 +384,8 @@ int _tmain(int argc, _TCHAR* argv[])
 	try
 	{
 		Modifi(argv[1]);
+
+		cout << "The operation completed successfully" << endl;
 	}
 	catch (exception e)
 	{

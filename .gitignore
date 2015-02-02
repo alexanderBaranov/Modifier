@@ -3,3 +3,9 @@ Debug/Modifier.log
 ReadMe.txt
 Modifier.vcxproj.user
 Modifier.vcxproj.filters
+*.obj
+*.pch
+*.tlog
+*.idb
+*.pdb
+*.log
