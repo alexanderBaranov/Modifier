@@ -11,6 +11,7 @@
 #include <sstream>
 #include <algorithm>
 #include "src_gumbo\gumbo.h"
+#include "src_gumbo\vector.h"
 
 using namespace std;
 
@@ -295,10 +296,19 @@ templateParams ReplaceKeys(const string& srcFile,templateParams& configMap)
 		}
 		else
 		{
-			GumboNode* title_text = static_cast<GumboNode*>(element->v.element.children.data[0]);
-			if (title_text->type == GUMBO_NODE_TEXT)
+			GumboVector *gmbVector = &element->v.element.children;
+			for (int i = 0; i < gmbVector->length; i++)
 			{
-				keyStr = title_text->v.text.text;
+				//GumboAttribute* attr_text = static_cast<GumboAttribute*>(element->v.element.attributes.data[i]);
+				GumboNode* title_text = static_cast<GumboNode*>(element->v.element.children.data[i]);
+				if (title_text->type == GUMBO_NODE_TEXT)
+				{
+					keyStr += title_text->v.text.text;
+				}
+				else if (title_text->type == GUMBO_NODE_ELEMENT)
+				{
+					keyStr.append(title_text->v.element.original_tag.data, title_text->v.element.original_tag.length);
+				}
 			}
 		}
 
