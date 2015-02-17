@@ -139,7 +139,7 @@ string FindFileFromDir(string inputFolder)
 	return filePath;
 }
 
-templateParams ReadConfigFile()
+void ReadConfigFile(templateParams& configMap, templateParams& configOfContentItem)
 {
 	ifstream inFile(kConfigFile);
 	if (!inFile)
@@ -150,12 +150,13 @@ templateParams ReadConfigFile()
 	string valueStr, keyStr;
 	bool isNowValue = false;
 	bool canReedValue = false;
-	templateParams configMap;
+	int percentOfContent = 0;
+	bool isContent = false;
 
 	char ch;
 	while (inFile.get(ch))
 	{
-		if ((ch == ';') || (ch == '\n') || (ch == '\r'))
+		if ((ch == ';') || (ch == '\n') || (ch == '\r') || (ch == '\t'))
 		{
 			continue;
 		}
@@ -171,6 +172,25 @@ templateParams ReadConfigFile()
 			continue;
 		}
 
+		if (!isNowValue && (ch == '%'))
+		{
+			percentOfContent++;
+		}
+
+		if ((percentOfContent == 2) 
+			&& (ch == '{')
+			&& (keyStr == "%CONTENT%"))
+		{
+			isContent = true;
+			keyStr.clear();
+			continue;
+		}
+
+		if ((percentOfContent == 2) && (ch == '}'))
+		{
+			isContent = false;
+		}
+
 		if (isNowValue && (ch == '"'))
 		{
 			if (canReedValue)
@@ -178,7 +198,14 @@ templateParams ReadConfigFile()
 				canReedValue = false;
 				isNowValue = false;
 
-				configMap[keyStr] = valueStr;
+				if (isContent)
+				{
+					configOfContentItem[keyStr] = valueStr;
+				}
+				else
+				{
+					configMap[keyStr] = valueStr;
+				}
 
 				keyStr.clear();
 				valueStr.clear();
@@ -201,10 +228,6 @@ templateParams ReadConfigFile()
 			keyStr += ch;
 		}
 	};
-
-
-
-	return configMap;
 }
 
 string GetWord(string line, size_t pos)
@@ -318,7 +341,7 @@ templateParams ReplaceKeys(const string& srcFile,templateParams& configMap)
 	return newParams;
 }
 
-void ReplaceContentType(templateParams& config)
+void ReplaceContentType(templateParams& config, templateParams& configOfContentItem)
 {
 	auto copyConfig = config;
 	for each(auto& pair in copyConfig)
@@ -340,7 +363,7 @@ void ReplaceContentType(templateParams& config)
 
 		if (!type.empty())
 		{
-			tempMap.insert(std::pair<string, string>("{%CONTENT%}", type));
+			tempMap.insert(std::pair<string, string>("{%CONTENT%}", configOfContentItem[type]));
 			string key = pair.first;
 			string value = pair.second;
 			config.erase(pair.first);
@@ -351,7 +374,9 @@ void ReplaceContentType(templateParams& config)
 
 void Modifi(const TCHAR *inputFolder)
 {
-	templateParams config = ReadConfigFile();
+	templateParams config, configOfContentItem;
+	ReadConfigFile(config, configOfContentItem);
+
 	string filePath = FindFileFromDir(inputFolder);
 
 	ifstream inFile(filePath, ifstream::binary);
@@ -372,7 +397,7 @@ void Modifi(const TCHAR *inputFolder)
 
 	config = ReplaceKeys(strFileBuf, config);
 
-	ReplaceContentType(config);
+	ReplaceContentType(config, configOfContentItem);
 
 	ofstream outFile(filePath, ifstream::binary);
 	if (!outFile)
