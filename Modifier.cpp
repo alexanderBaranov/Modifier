@@ -272,6 +272,31 @@ gumbo_get_element_by_id(const char *id, GumboNode *document) {
 	return NULL;
 }
 
+GumboNode *
+gumbo_get_element_by_class(const char *className, GumboNode *document) {
+
+	if (GUMBO_NODE_DOCUMENT != document->type
+		&& GUMBO_NODE_ELEMENT != document->type) {
+		return NULL;
+	}
+
+	GumboAttribute *node_id =
+		gumbo_get_attribute(&document->v.element.attributes, "class");
+	if (node_id && 0 == strcmp(className, node_id->value)) {
+		return document;
+	}
+
+	// iterate all children
+	GumboVector *children = &document->v.element.children;
+	for (unsigned int i = 0; i < children->length; i++) {
+		GumboNode *node = gumbo_get_element_by_class(className, (GumboNode *)children->data[i]);
+		if (node) return node;
+	}
+
+	return NULL;
+}
+
+
 string FindValueFromSrcFile(const string &sourceFile, string findKey)
 {
 	size_t indexOfPos = sourceFile.find(findKey);
@@ -296,6 +321,12 @@ string FindValueFromSrcFile(const string &sourceFile, string findKey)
 	return "";
 }
 
+bool isSpaces(char c)
+{
+	const string spaces = "\t\r\n";
+	return (spaces.find(c) != string::npos);
+}
+
 templateParams ReplaceKeys(const string& srcFile,templateParams& configMap)
 {
 	string valueStr, keyStr;
@@ -311,6 +342,12 @@ templateParams ReplaceKeys(const string& srcFile,templateParams& configMap)
 	{
 		string keyStr;
 		element = gumbo_get_element_by_id(pair.first.c_str(), output->root);
+
+		if (!element)
+		{
+			element = gumbo_get_element_by_class(pair.first.c_str(), output->root);
+		}
+
 		if (!element)
 		{
 			keyStr = FindValueFromSrcFile(srcFile, pair.first);
@@ -327,6 +364,7 @@ templateParams ReplaceKeys(const string& srcFile,templateParams& configMap)
 				if (title_text->type == GUMBO_NODE_TEXT)
 				{
 					keyStr += title_text->v.text.text;
+					keyStr.erase(remove_if(keyStr.begin(), keyStr.end(), isSpaces), keyStr.end());
 				}
 				else if (title_text->type == GUMBO_NODE_ELEMENT)
 				{

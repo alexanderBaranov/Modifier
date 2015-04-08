@@ -9,3 +9,5 @@ Modifier.vcxproj.filters
 *.idb
 *.pdb
 *.log
+*.ilk
+*.ipch
